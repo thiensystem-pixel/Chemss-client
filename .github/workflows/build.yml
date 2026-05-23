@@ -18,35 +18,47 @@ jobs:
         
     - name: Process and Compile Code
       run: |
-        # 1. Tu dong tai bo khung dich Fabric 1.21.1 chuan tu trang chu
+        # 1. Tai bo khung dich Fabric 1.21.1 tu trang chu
         git clone --depth 1 --branch 1.21.1 https://github.com/FabricMC/fabric-example-mod.git template
         
-        # 2. Xoa cac file mau cua template di
+        # Xoa cac file mau cua template di
         rm -rf template/src/main/java/*
         rm -rf template/src/main/resources/*
         
-        # 3. Giai nen file zip cua ban
-        mkdir extracted
-        unzip -q "*.zip" -d extracted
-        
-        # 4. Kiem tra cau truc va dua code cua ban vao bo dich
-        SRC_JAVA_DIR=$(find extracted -name "java" -type d | grep "src/main/java" | head -n 1)
-        SRC_RES_DIR=$(find extracted -name "resources" -type d | grep "src/main/resources" | head -n 1)
-        
-        if [ -n "$SRC_JAVA_DIR" ] && [ -n "$SRC_RES_DIR" ]; then
-          echo "Phat hien cau truc tieu chuan src/main/java"
-          cp -r "$SRC_JAVA_DIR"/* template/src/main/java/
-          cp -r "$SRC_RES_DIR"/* template/src/main/resources/
+        # 2. Tu dong gom code (Ke ca dang zip hay dang thu muc thong thuong)
+        mkdir -p extracted
+        if ls *.zip 1> /dev/null 2>&1; then
+          echo "Phat hien file zip, dang giai nen..."
+          unzip -q "*.zip" -d extracted
         else
-          echo "Phat hien cau truc phang"
-          FABRIC_JSON=$(find extracted -name "fabric.mod.json" | head -n 1)
-          MOD_ROOT=$(dirname "$FABRIC_JSON")
-          cp -r "$MOD_ROOT"/* template/src/main/java/
-          cp -r "$MOD_ROOT"/* template/src/main/resources/
-          find template/src/main/resources/ -name "*.java" -delete
+          echo "Phat hien code thong thuong, dang copy vao he thong..."
+          for item in *; do
+            if [ "$item" != "template" ] && [ "$item" != "extracted" ] && [ "$item" != "output_jar" ]; then
+              cp -r "$item" extracted/ 2>/dev/null || true
+            fi
+          done
         fi
         
-        # 5. Tu dong xoa dong loi KeyboardMixin trong file cau hinh
+        # 3. Tim vi tri file cau hinh de xac dinh goc cua mod
+        MOD_ROOT=$(find extracted -name "fabric.mod.json" -exec dirname {} \; | head -n 1)
+        if [ -z "$MOD_ROOT" ]; then
+          MOD_ROOT="extracted"
+        fi
+        
+        # 4. Dua code vao dung vi tri de tien hanh dich sang .class
+        HAS_SRC_DIR=$(find "$MOD_ROOT" -path "*/src/main/java" -type d | head -n 1)
+        if [ -n "$HAS_SRC_DIR" ]; then
+          SRC_BASE=$(echo "$HAS_SRC_DIR" | sed 's|/src/main/java||')
+          cp -r "$SRC_BASE"/src/main/java/* template/src/main/java/ 2>/dev/null || true
+          cp -r "$SRC_BASE"/src/main/resources/* template/src/main/resources/ 2>/dev/null || true
+        else
+          cp -r "$MOD_ROOT"/* template/src/main/java/ 2>/dev/null || true
+          cp -r "$MOD_ROOT"/* template/src/main/resources/ 2>/dev/null || true
+          find template/src/main/java/ -type f ! -name "*.java" -delete 2>/dev/null || true
+          find template/src/main/resources/ -name "*.java" -delete 2>/dev/null || true
+        fi
+        
+        # 5. Tu dong xoa dong loi KeyboardMixin gay vao game bi vao vao file cau hinh
         python3 -c "
         import json, glob
         for fpath in glob.glob('template/src/main/resources/**/chemss.mixins.json', recursive=True):
@@ -59,13 +71,13 @@ jobs:
         print('Da tu dong sua xong loi KeyboardMixin!')
         "
         
-        # 6. Tien hanh chay may dich sang duoi .class
+        # 6. Chay may dich tu file .java sang file .class chuẩn Minecraft
         cd template
         chmod +x gradlew
         ./gradlew build
         cd ..
         
-        # 7. Gom file .jar da duoc dich thanh cong ra ngoai
+        # 7. Gom thanh qua file .jar ra ngoai
         mkdir -p output_jar
         find template/build/libs/ -type f -name "*.jar" ! -name "*-sources.jar" ! -name "*-dev.jar" ! -name "*-sources-dev.jar" -exec cp {} output_jar/ShibaClient.jar \;
 
