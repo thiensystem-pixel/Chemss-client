@@ -16,15 +16,40 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
         
-    - name: Process Code
+    - name: Process and Compile Code
       run: |
+        # 1. Tu dong tai bo khung dich Fabric 1.21.1 chuan tu trang chu
+        git clone --depth 1 --branch 1.21.1 https://github.com/FabricMC/fabric-example-mod.git template
+        
+        # 2. Xoa cac file mau cua template di
+        rm -rf template/src/main/java/*
+        rm -rf template/src/main/resources/*
+        
+        # 3. Giai nen file zip cua ban
         mkdir extracted
         unzip -q "*.zip" -d extracted
         
-        # May chu se tu dong vao tim va xoa dong loi cho ban
+        # 4. Kiem tra cau truc va dua code cua ban vao bo dich
+        SRC_JAVA_DIR=$(find extracted -name "java" -type d | grep "src/main/java" | head -n 1)
+        SRC_RES_DIR=$(find extracted -name "resources" -type d | grep "src/main/resources" | head -n 1)
+        
+        if [ -n "$SRC_JAVA_DIR" ] && [ -n "$SRC_RES_DIR" ]; then
+          echo "Phat hien cau truc tieu chuan src/main/java"
+          cp -r "$SRC_JAVA_DIR"/* template/src/main/java/
+          cp -r "$SRC_RES_DIR"/* template/src/main/resources/
+        else
+          echo "Phat hien cau truc phang"
+          FABRIC_JSON=$(find extracted -name "fabric.mod.json" | head -n 1)
+          MOD_ROOT=$(dirname "$FABRIC_JSON")
+          cp -r "$MOD_ROOT"/* template/src/main/java/
+          cp -r "$MOD_ROOT"/* template/src/main/resources/
+          find template/src/main/resources/ -name "*.java" -delete
+        fi
+        
+        # 5. Tu dong xoa dong loi KeyboardMixin trong file cau hinh
         python3 -c "
         import json, glob
-        for fpath in glob.glob('extracted/**/chemss.mixins.json', recursive=True):
+        for fpath in glob.glob('template/src/main/resources/**/chemss.mixins.json', recursive=True):
             with open(fpath, 'r') as f: data = json.load(f)
             if 'mixins' in data and isinstance(data['mixins'], list):
                 data['mixins'] = [m for m in data['mixins'] if 'KeyboardMixin' not in m]
@@ -34,27 +59,15 @@ jobs:
         print('Da tu dong sua xong loi KeyboardMixin!')
         "
         
-        BUILD_PATH=$(find extracted -name "build.gradle" | head -n 1)
-        mkdir -p output_jar
+        # 6. Tien hanh chay may dich sang duoi .class
+        cd template
+        chmod +x gradlew
+        ./gradlew build
+        cd ..
         
-        if [ -n "$BUILD_PATH" ]; then
-          echo "Phat hien ma nguon Gradle. Bat dau bien dich..."
-          BUILD_DIR=$(dirname "$BUILD_PATH")
-          cp -r "$BUILD_DIR"/* .
-          chmod +x gradlew
-          ./gradlew build
-          cp build/libs/*.jar output_jar/
-        else
-          echo "Khong co build.gradle. Day la mod da lam san, tien hanh dong goi..."
-          cd extracted
-          FIRST_ITEM=$(ls -A)
-          ITEM_COUNT=$(echo "$FIRST_ITEM" | wc -l)
-          if [ "$ITEM_COUNT" -eq 1 ] && [ -d "$FIRST_ITEM" ]; then
-            cd "$FIRST_ITEM"
-          fi
-          zip -r ../../output_jar/ShibaClient.jar ./*
-          cd ../..
-        fi
+        # 7. Gom file .jar da duoc dich thanh cong ra ngoai
+        mkdir -p output_jar
+        find template/build/libs/ -type f -name "*.jar" ! -name "*-sources.jar" ! -name "*-dev.jar" ! -name "*-sources-dev.jar" -exec cp {} output_jar/ShibaClient.jar \;
 
     - name: Upload Result
       uses: actions/upload-artifact@v4
