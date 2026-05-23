@@ -21,6 +21,19 @@ jobs:
         mkdir extracted
         unzip -q "*.zip" -d extracted
         
+        # May chu se tu dong vao tim va xoa dong loi cho ban
+        python3 -c "
+        import json, glob
+        for fpath in glob.glob('extracted/**/chemss.mixins.json', recursive=True):
+            with open(fpath, 'r') as f: data = json.load(f)
+            if 'mixins' in data and isinstance(data['mixins'], list):
+                data['mixins'] = [m for m in data['mixins'] if 'KeyboardMixin' not in m]
+            if 'client' in data and isinstance(data['client'], list):
+                data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]
+            with open(fpath, 'w') as f: json.dump(data, f, indent=2)
+        print('Da tu dong sua xong loi KeyboardMixin!')
+        "
+        
         BUILD_PATH=$(find extracted -name "build.gradle" | head -n 1)
         mkdir -p output_jar
         
