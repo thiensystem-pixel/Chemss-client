@@ -1,60 +1,63 @@
-name: Build or Pack Mod
+name: Build Minecraft Fabric Mod
+
 on:
   push:
+    branches: [ "main", "master" ]
+  pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v4
-    
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
         java-version: '21'
         distribution: 'temurin'
-        
+
     - name: Process and Compile Code
       run: |
-        # 1. Tai bo khung dich Fabric 1.21 tu trang chu
-        git clone --depth 1 --branch 1.21 https://github.com/FabricMC/fabric-example-mod.git template || git clone --depth 1 https://github.com/FabricMC/fabric-example-mod.git template
-        
-        # Xoa cac file mau cua template di
-        rm -rf template/src/main/java/*
-        rm -rf template/src/main/resources/*
-        
-        # 2. Tu dong gom code (Ke ca dang zip hay dang thu muc thong thuong)
+        # 1. Dọn dẹp triệt để và tải khung dịch Fabric 1.21.1 chuẩn
+        rm -rf template extracted output_jar
+        git clone --depth 1 --branch 1.21.1 https://github.com/FabricMC/fabric-example-mod.git template
+
+        # 2. Tạo cấu trúc thư mục tạm
         mkdir -p extracted
-        if ls *.zip 1> /dev/null 2>&1; then
-          echo "Phat hien file zip, dang giai nen..."
+        mkdir -p output_jar
+
+        # Giải nén nếu là file zip, hoặc copy trực tiếp nếu là thư mục thường
+        if ls *.zip 1>/dev/null 2>&1; then
           unzip -q "*.zip" -d extracted
         else
-          echo "Phat hien code thong thuong, dang copy vao he thong..."
+          echo "Phat hien ma nguon dang thu muc thuong, dang sao chep..."
           for item in *; do
             if [ "$item" != "template" ] && [ "$item" != "extracted" ] && [ "$item" != "output_jar" ]; then
               cp -r "$item" extracted/ 2>/dev/null || true
             fi
           done
         fi
-        
-        # 3. Quet doc lap va tu dong dua code vao vi tri chinh xac
+
+        # 3. Quét tự động và đưa code vào vị trí chính xác
         JAVA_SRC=$(find extracted -path "*/src/main/java" -type d | head -n 1)
         RES_SRC=$(find extracted -path "*/src/main/resources" -type d | head -n 1)
         
         if [ -n "$JAVA_SRC" ]; then
-          echo "Tim thay thu muc java tai: $JAVA_SRC"
+          echo "Tim thay thu muc Java tai: $JAVA_SRC"
           cp -r "$JAVA_SRC"/* template/src/main/java/ 2>/dev/null || true
         fi
         if [ -n "$RES_SRC" ]; then
-          echo "Tim thay thu muc resources tai: $RES_SRC"
+          echo "Tim thay thu muc Resources tai: $RES_SRC"
           cp -r "$RES_SRC"/* template/src/main/resources/ 2>/dev/null || true
         fi
         
-        # Neu code tai len dang cay thu muc phang (flat) khong co src/main/...
         if [ -z "$JAVA_SRC" ] && [ -z "$RES_SRC" ]; then
-          echo "Khong tim thay cau truc thu muc tieu chuan, tien hanh quet thong minh..."
+          echo "Khong tim thay cau truc chuan, tien hanh quet toan bo..."
           JSON_LOC=$(find extracted -name "fabric.mod.json" -type f | head -n 1)
           if [ -n "$JSON_LOC" ]; then
             ROOT_DIR=$(dirname "$JSON_LOC")
@@ -66,19 +69,20 @@ jobs:
           find template/src/main/java/ -type f ! -name "*.java" -delete 2>/dev/null || true
           find template/src/main/resources/ -name "*.java" -delete 2>/dev/null || true
         fi
-        
-        # 4. Ghi file Python xu ly dong goi va loai bo KeyboardMixin loi (Ghi truc tiep giu nguyen thut le)
+
+        # 4. Ghi file Python xử lý cấu trúc gói và xóa triệt để KeyboardMixin
         cat << 'EOF' > organize.py
 import os
-import re
 import glob
 import json
 import shutil
+import re
 
-# Tim va loai bo KeyboardMixin ra khoi cac file cau hinh json de tranh crash game
-for fpath in glob.glob('template/src/main/resources/**/*.json', recursive=True):
+print("--- Dang xu ly cac file Mixin JSON ---")
+mixin_files = glob.glob('template/src/main/resources/**/*mixin*.json', recursive=True)
+for fpath in mixin_files:
     try:
-        with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(fpath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         modified = False
         if 'mixins' in data and isinstance(data['mixins'], list):
@@ -92,15 +96,15 @@ for fpath in glob.glob('template/src/main/resources/**/*.json', recursive=True):
         if modified:
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
-            print(f"Da xoa sach KeyboardMixin khoi file: {fpath}")
+            print(f"Da loai bo KeyboardMixin khoi: {fpath}")
     except Exception as e:
-        print(f"Bỏ qua lỗi đọc JSON tai {fpath}: {e}")
+        print(f"Bo qua hoac loi khi doc mixin {fpath}: {e}")
 
-# Sap xep lai vi tri thu muc Java dua tren tu khoa 'package' thuc te trong code
-temp_dir = 'temp_java_reorganized'
+print("--- Chuan hoa cau truc Package Java ---")
+temp_dir = 'temp_java_reorganize'
 os.makedirs(temp_dir, exist_ok=True)
-java_files = glob.glob('template/src/main/java/**/*.java', recursive=True)
 
+java_files = glob.glob('template/src/main/java/**/*.java', recursive=True)
 for fpath in java_files:
     if os.path.isfile(fpath):
         filename = os.path.basename(fpath)
@@ -109,8 +113,8 @@ for fpath in java_files:
                 content = f.read()
         except Exception:
             continue
-        
-        # Ghi de noi dung ModuleManager.java chuan hoa khong import KeyboardMixin
+
+        # Ghi de noi dung ModuleManager.java de xoa KeyboardMixin
         if filename == 'ModuleManager.java':
             content = """package me.chemss.modules;
 
@@ -140,15 +144,15 @@ public class ModuleManager {
         return null;
     }
 }"""
-        
-        content = re.sub(r'^[Pp]ackage\s+', 'package ', content, flags=re.MULTILINE)
+
+        # Tu dong trich xuat package dung trong code
         match = re.search(r'package\s+([\w\.]+)\s*;', content)
         if match:
             pkg_name = match.group(1).strip()
         else:
-            pkg_name = "me.chemss.modules"
-            content = "package me.chemss.modules;\n" + content
-        
+            pkg_name = "me.chemss"
+            content = "package me.chemss;\n" + content
+
         pkg_dir = os.path.join(temp_dir, pkg_name.replace('.', '/'))
         os.makedirs(pkg_dir, exist_ok=True)
         with open(os.path.join(pkg_dir, filename), 'w', encoding='utf-8') as f:
@@ -159,10 +163,10 @@ if os.path.exists(dest_java_dir):
     shutil.rmtree(dest_java_dir)
 os.makedirs(dest_java_dir, exist_ok=True)
 
-if os.path.exists(temp_dir) and os.listdir(temp_dir):
+if os.listdir(temp_dir):
     for item in os.listdir(temp_dir):
         shutil.move(os.path.join(temp_dir, item), dest_java_dir)
-    print("Xap xep cau truc file Java thanh cong!")
+    print("Sap xep file Java vao package hop le thanh cong!")
 else:
     print("Khong tim thay file Java nao de xap xep.")
 
@@ -170,21 +174,20 @@ if os.path.exists(temp_dir):
     shutil.rmtree(temp_dir)
 EOF
 
-        # 5. Chay cong cu tu dong sap xep hang file
+        # 5. Chạy script tối ưu cấu trúc
         python3 organize.py
-        
-        # 6. Chay may dich tu file .java sang file .class chuan Minecraft
+
+        # 6. Tiến hành compile code
         cd template
         chmod +x gradlew
         ./gradlew build
         cd ..
-        
-        # 7. Gom thanh qua file .jar ra ngoai
-        mkdir -p output_jar
-        find template/build/libs/ -type f -name "*.jar" ! -name "*-sources.jar" ! -name "*-dev.jar" ! -name "*-sources-dev.jar" -exec cp {} output_jar/ShibaClient.jar \;
 
-    - name: Upload Result
-      uses: actions/upload-artifact@v4
+        # 7. Gom tất cả các file .jar đầu ra vào mục sản phẩm
+        cp template/build/libs/*.jar output_jar/ 2>/dev/null || true
+
+    - name: Upload Mod Jar Artifact
+      uses: actions/artifacts@v4
       with:
-        name: ShibaClient-Jar
+        name: Fabric-Mod-1.21.1
         path: output_jar/
