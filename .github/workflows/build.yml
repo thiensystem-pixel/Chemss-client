@@ -58,7 +58,7 @@ jobs:
           find template/src/main/resources/ -name "*.java" -delete 2>/dev/null || true
         fi
         
-        # 5. Tu dong xoa dong loi KeyboardMixin va tu dong va loi file ModuleManager.java
+        # 5. Bo may tu dong va loi thong minh
         python3 -c "
         import json, glob
         # Sua loi file mixin cấu hình game
@@ -70,15 +70,40 @@ jobs:
                 data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]
             with open(fpath, 'w') as f: json.dump(data, f, indent=2)
             
-        # Sua loi viet hoa Package va xoa doan code rác bi lap o ModuleManager.java
+        # Ghi de han file ModuleManager.java moi tinh chuon 100% xoa sach rac
+        correct_code = '''package me.chemss.modules;
+
+        import java.util.ArrayList;
+        import java.util.List;
+        import me.chemss.modules.movement.Sprint;
+        import me.chemss.modules.combat.DoubleAnchor;
+
+        public class ModuleManager {
+            private final List<Module> modules = new ArrayList<>();
+
+            public ModuleManager() {
+                modules.add(new Sprint());       
+                modules.add(new DoubleAnchor()); 
+            }
+
+            public List<Module> getModules() {
+                return modules;
+            }
+
+            public Module getModuleByName(String name) {
+                for (Module m : modules) {
+                    if (m.getName().equalsIgnoreCase(name)) {
+                        return m;
+                    }
+                }
+                return null;
+            }
+        }
+        '''
         for fpath in glob.glob('template/src/main/java/**/ModuleManager.java', recursive=True):
-            with open(fpath, 'r') as f: text = f.read()
-            text = text.replace('Package me.chemss', 'package me.chemss')
-            if ')) {' in text:
-                text = text.split(')) {')[0]
-            with open(fpath, 'w') as f: f.write(text)
+            with open(fpath, 'w') as f: f.write(correct_code)
             
-        print('Da tu dong va xong tat ca cac loi file!')
+        print('Da tu dong sua va tao moi ModuleManager thanh cong!')
         "
         
         # 6. Chay may dich tu file .java sang file .class chuẩn Minecraft
