@@ -58,111 +58,13 @@ jobs:
           find template/src/main/resources/ -name "*.java" -delete 2>/dev/null || true
         fi
         
-        # 5. Khởi chạy Trình dọn dẹp và Tự động sắp xếp lại cấu trúc thư mục Java chuẩn 100%
-        cat << 'EOF' > organize.py
-        import os
-        import re
-        import glob
-        import json
-        import shutil
-
-        # --- 5.1 Sửa lỗi file mixin cấu hình game ---
-        for fpath in glob.glob('template/src/main/resources/**/chemss.mixins.json', recursive=True):
-            try:
-                with open(fpath, 'r') as f: data = json.load(f)
-                if 'mixins' in data and isinstance(data['mixins'], list):
-                    data['mixins'] = [m for m in data['mixins'] if 'KeyboardMixin' not in m]
-                if 'client' in data and isinstance(data['client'], list):
-                    data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]
-                with open(fpath, 'w') as f: json.dump(data, f, indent=2)
-                print(f"Da va xong mixin: {fpath}")
-            except Exception as e:
-                print(f"Loi mixin {fpath}: {e}")
-
-        # --- 5.2 Quét và tự động đưa các file Java về đúng thư mục package ---
-        os.makedirs('temp_java', exist_ok=True)
-        java_files = glob.glob('template/src/main/java/**/*.java', recursive=True)
-
-        for fpath in java_files:
-            if os.path.isfile(fpath):
-                filename = os.path.basename(fpath)
-                
-                # Đọc nội dung file
-                with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                
-                # Nếu phát hiện file ModuleManager.java, lập tức thay thế bằng bản code sạch hoàn hảo nhất
-                if filename == 'ModuleManager.java':
-                    content = """package me.chemss.modules;
-
-import java.util.ArrayList;
-import java.util.List;
-import me.chemss.modules.movement.Sprint;
-import me.chemss.modules.combat.DoubleAnchor;
-
-public class ModuleManager {
-    private final List<Module> modules = new ArrayList<>();
-
-    public ModuleManager() {
-        modules.add(new Sprint());       
-        modules.add(new DoubleAnchor()); 
-    }
-
-    public List<Module> getModules() {
-        return modules;
-    }
-
-    public Module getModuleByName(String name) {
-        for (Module m : modules) {
-            if (m.getName().equalsIgnoreCase(name)) {
-                return m;
-            }
-        }
-        return null;
-    }
-}"""
-                
-                # Sửa lỗi viết hoa sai chính tả chữ 'Package' thành 'package'
-                content = re.sub(r'^[Pp]ackage\s+', 'package ', content, flags=re.MULTILINE)
-                
-                # Đọc dòng khai báo package bên trong file để tìm vị trí đặt thư mục đúng
-                match = re.search(r'package\s+([\w\.]+)\s*;', content)
-                if match:
-                    pkg_name = match.group(1).strip()
-                else:
-                    pkg_name = "me.chemss.modules"
-                    content = "package me.chemss.modules;\n" + content
-                
-                # Tạo đường dẫn thư mục chuẩn dựa trên tên package
-                pkg_dir = os.path.join('temp_java', pkg_name.replace('.', '/'))
-                os.makedirs(pkg_dir, exist_ok=True)
-                
-                # Di chuyển file vào thư mục cấu trúc mới sạch sẽ
-                dest_file = os.path.join(pkg_dir, filename)
-                with open(dest_file, 'w', encoding='utf-8') as f:
-                    f.write(content)
-
-        # Xóa bỏ thư mục java cũ bị lộn xộn cấu trúc đi
-        if os.path.exists('template/src/main/java'):
-            shutil.rmtree('template/src/main/java')
-        os.makedirs('template/src/main/java', exist_ok=True)
-
-        # Đưa toàn bộ cấu thư mục chuẩn đã sắp xếp vào hệ thống chính thức
-        if os.path.exists('temp_java') and os.listdir('temp_java'):
-            for item in os.listdir('temp_java'):
-                shutil.move(os.path.join('temp_java', item), 'template/src/main/java/')
-            print("Chúc mừng! Đã sắp xếp lại toàn bộ cấu trúc file Java khớp với Package thành công!")
-        else:
-            print("Không tìm thấy file Java nào!")
-            
-        if os.path.exists('temp_java'):
-            shutil.rmtree('temp_java')
-        EOF
+        # 5. Giai ma bo cong cu sap xep tu dong (Mã hoá an toan tranh loi ky tu va thut le)
+        echo -n "aW1wb3J0IG9zCmltcG9ydCByZQppbXBvcnQgZ2xvYgppbXBvcnQganNvbgppbXBvcnQgc2h1dGlsCgpmb3IgZnBhdGggaW4gZ2xvYi5nbG9iKCd0ZW1wbGF0ZS9zcmMvbWFpbi9yZXNvdXJjZXMvKiovY2hlbXNzLm1peGlucy5qc29uJywgcmVjdXJzaXZlPVRydWUpOgogICAgdHJ5OgogICAgICAgIHdpdGggb3BlbihmcGF0aCwgJ3InKSBhcyBmOiBkYXRhID0ganNvbi5sb2FkKGYpCiAgICAgICAgaWYgJ21peGlucycgaW4gZGF0YSBhbmQgaXNpbnN0YW5jZShkYXRhWydtaXhpbnMnXSwgbGlzdCk6CiAgICAgICAgICAgIGRhdGFbJ21peGlucyddID0gW20gZm9yIG0gaW4gZGF0YVsnbWl4aW5zJ10gaWYgJ0tleWJvYXJkTWl4aW4nIG5vdCBpbiBtXQogICAgICAgIGlmICdjbGllbnQnIGluIGRhdGEgYW5kIGlzaW5zdGFuY2UoZGF0YVsnY2xpZW50J10sIGxpc3QpOgogICAgICAgICAgICBkYXRhWydjbGllbnQnXSA9IFttIGZvciBtIGluIGRhdGFbJ2NsaWVudCddIGlmICdLZXlib2FyZE1peGluJyBub3QgaW4gbV0KICAgICAgICB3aXRoIG9wZW4oZnBhdGgsICd3JykgYXMgZjoganNvbi5kdW1wKGRhdGEsIGYsIGluZGVudD0yKQogICAgICAgIHByaW50KGYiRml4ZWQgbWl4aW46IHtmcGF0aH0iKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KGYiRXJyb3IgbWl4aW4ge2ZwYXRofToge2V9IikKCm9zLm1ha2VkaXJzKCd0ZW1wX2phdmAnLCBleGlzdF9vaz1UcnVlKQpqYXZhX2ZpbGVzID0gZ2xvYi5nbG9iKCd0ZW1wbGF0ZS9zcmMvbWFpbi9qYXZhLyoqLyouamF2YScsIHJlY3Vyc2l2ZT1UcnVlKQoKZm9yIGZwYXRoIGluIGphdmFfZmlsZXM6CiAgICBpZiBvcy5wYXRoLmlzZmlsZShmcGF0aCk6CiAgICAgICAgZmlsZW5hbWUgPSBvcy5wYXRoLmJhc2VuYW1lKGZwYXRoKQogICAgICAgIHdpdGggb3BlbihmcGF0aCwgJ3InLCBlbmNvZGluZz0ndXRmLTgnLCBlcnJvcnM9J2lnbm9yZScpIGFzIGY6CiAgICAgICAgICAgIGNvbnRlbnQgPSBmLnJlYWQoKQogICAgICAgIAogICAgICAgIGlmIGZpbGVuYW1lID09ICdNb2R1bGVNYW5hZ2VyLmphdmEnOgogICAgICAgICAgICBjb250ZW50ID0gIiIicGFja2FnZSBtZS5jaGVtc3MubW9kdWxlczsKCmltcG9ydCBqYXZhLnV0aWwuQXJyYXlMaXN0OwppbXBvcnQgamF2YS51dGlsLkxpc3Q7CmltcG9ydCBtZS5jaGVtc3MubW9kdWxlcy5tb3ZlbWVudC5TcHJpbnQ7CmltcG9ydCBtZS5jaGVtc3MubW9kdWxlcy5jb21iYXQuRG91YmxlQW5jaG9yOwoKcHVibGljIGNsYXNzIE1vZHVsZU1hbmFnZXIgewogICAgcHJpdmF0ZSBmaW5hbCBMaXN0PE1vZHVsZT4gbW9kdWxlcyA9IG5ldyBBcnJheUxpc3Q8PigpOwoKICAgIHB1YmxpYyBNb2R1bGVNYW5hZ2VyKCkgewogICAgICAgIG1vZHVsZXMuYWRkKG5ldyBTcHJpbnQoKSk7ICAgICAgIAogICAgICAgIG1vZHVsZXMuYWRkKG5ldyBEb3VibGVBbmNob3IoKSk7IAogICAgfQoKICAgIHB1YmxpYyBMaXN0PE1vZHVsZT4gZ2V0TW9kdWxlcygpIHsKICAgICAgICByZXR1cm4gbW9kdWxlczsKICAgIH0KCiAgICBwdWJsaWMgTW9kdWxlIGdldE1vZHVsZUJ5TmFtZShTdHJpbmcgbmFtZSkgewogICAgICAgIGZvciAoTW9kdWxlIG0gOiBtb2R1bGVzKSB7CiAgICAgICAgICAgIGlmIChtLmdldE5hbWUoKS5lcXVhbHNJZ25vcmVDYXNlKG5hbWUpKSB7CiAgICAgICAgICAgICAgICByZXR1cm4gbTsKICAgICAgICAgICAgfQogICAgICAgIH0KICAgICAgICByZXR1cm4gbnVsbDsKICAgIH0KfSIiIgogICAgICAgIAogICAgICAgIGNvbnRlbnQgPSByZS5zdWIocideW1BwXWFja2FnZVxzKycsICdwYWNrYWdlICcsIGNvbnRlbnQsIGZsYWdzPXJlLk1VTFRJTElORSkKICAgICAgICBtYXRjaCA9IHJlLnNlYXJjaChyJ3BhY2thZ2VccysoW1x3XC5dKylccyo7JywgY29udGVudCkKICAgICAgICBpZiBtYXRjaDoKICAgICAgICAgICAgcGtnX25hbWUgPSBtYXRjaC5ncm91cCgxKS5zdHJpcCgpCiAgICAgICAgZWxzZToKICAgICAgICAgICAgcGtnX25hbWUgPSAibWUuY2hlbXNzLm1vZHVsZXMiCiAgICAgICAgICAgIGNvbnRlbnQgPSAicGFja2FnZSBtZS5jaGVtc3MubW9kdWxlcztcbiIgKyBjb250ZW50CiAgICAgICAgCiAgICAgICAgcGtnX2RpciA9IG9zLnBhdGguam9pbigndGVtcF9qYXZhJywgcGtnX25hbWUucmVwbGFjZSgnLicsICcvJykpCiAgICAgICAgb3MubWFrZWRpcnMocGtnX2RpciwgZXhpc3Rfb2s9VHJ1ZSkKICAgICAgICAKICAgICAgICBkZXN0X2ZpbGUgPSBvcy5wYXRoLmpvaW4ocGtnX2RpciwgZmlsZW5hbWUpCiAgICAgICAgd2l0aCBvcGVuKGRlc3RfZmlsZSwgJ3cnLCBlbmNvZGluZz0ndXRmLTgnKSBhcyBmOgogICAgICAgICAgICBmLndyaXRlKGNvbnRlbnQpCgppZiBvcy5wYXRoLmV4aXN0cygndGVtcGxhdGUvc3JjL21haW4vamF2YScpOgogICAgc2h1dGlsLnJtdHJlZSgndGVtcGxhdGUvc3JjL21haW4vamF2YScpCm9zLm1ha2VkaXJzKCd0ZW1wbGF0ZS9zcmMvbWFpbi9qYXZhJywgZXhpc3Rfb2s9VHJ1ZSkKCmlmIG9zLnBhdGguZXhpc3RzKCd0ZW1wX2phdmEnKSBhbmQgb3MubGlzdGRpcigndGVtcF9qYXZhJyk6CiAgICBmb3IgaXRlbSBpbiBvcy5saXN0ZGlyKCd0ZW1wX2phdmEnKToKICAgICAgICBzaHV0aWwubW92ZShvcy5wYXRoLmpvaW4oJ3RlbXBfamF2YScsIGl0ZW0pLCAndGVtcGxhdGUvc3JjL21haW4vamF2YS8nKQogICAgcHJpbnQoIlN1Y2Nlc3NmdWxseSBvcmdhbml6ZWQgSmF2YSBzdHJ1Y3R1cmUhIikKZWxzZToKICAgIHByaW50KCJObyBKYXZhIGZpbGVzIGZvdW5kISIpCiAgICAKaWYgb3MucGF0aC5leGlzdHMoJ3RlbXBfamF2YScpOgogICAgc2h1dGlsLnJtdHJlZSgndGVtcF9qYXZhJyk=" | base64 -d > organize.py
         
-        # Chạy công cụ tự động xếp hàng file
+        # Chay cong cu tu dong xep hang file
         python3 organize.py
         
-        # 6. Chay may dich tu file .java sang file .class chuẩn Minecraft
+        # 6. Chay may dich tu file .java sang file .class chuan Minecraft
         cd template
         chmod +x gradlew
         ./gradlew build
