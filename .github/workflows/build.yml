@@ -18,8 +18,8 @@ jobs:
         
     - name: Process and Compile Code
       run: |
-        # 1. Tai bo khung dich Fabric 1.21.1 tu trang chu
-        git clone --depth 1 --branch 1.21.1 https://github.com/FabricMC/fabric-example-mod.git template
+        # 1. Tai bo khung dich Fabric 1.21 tu trang chu
+        git clone --depth 1 --branch 1.21 https://github.com/FabricMC/fabric-example-mod.git template || git clone --depth 1 https://github.com/FabricMC/fabric-example-mod.git template
         
         # Xoa cac file mau cua template di
         rm -rf template/src/main/java/*
@@ -39,29 +39,138 @@ jobs:
           done
         fi
         
-        # 3. Tim vi tri file cau hinh de xac dinh goc cua mod
-        MOD_ROOT=$(find extracted -name "fabric.mod.json" -exec dirname {} \; | head -n 1)
-        if [ -z "$MOD_ROOT" ]; then
-          MOD_ROOT="extracted"
+        # 3. Quet doc lap va tu dong dua code vao vi tri chinh xac
+        JAVA_SRC=$(find extracted -path "*/src/main/java" -type d | head -n 1)
+        RES_SRC=$(find extracted -path "*/src/main/resources" -type d | head -n 1)
+        
+        if [ -n "$JAVA_SRC" ]; then
+          echo "Tim thay thu muc java tai: $JAVA_SRC"
+          cp -r "$JAVA_SRC"/* template/src/main/java/ 2>/dev/null || true
+        fi
+        if [ -n "$RES_SRC" ]; then
+          echo "Tim thay thu muc resources tai: $RES_SRC"
+          cp -r "$RES_SRC"/* template/src/main/resources/ 2>/dev/null || true
         fi
         
-        # 4. Dua code vao vi tri tam thoi de xu ly
-        HAS_SRC_DIR=$(find "$MOD_ROOT" -path "*/src/main/java" -type d | head -n 1)
-        if [ -n "$HAS_SRC_DIR" ]; then
-          SRC_BASE=$(echo "$HAS_SRC_DIR" | sed 's|/src/main/java||')
-          cp -r "$SRC_BASE"/src/main/java/* template/src/main/java/ 2>/dev/null || true
-          cp -r "$SRC_BASE"/src/main/resources/* template/src/main/resources/ 2>/dev/null || true
-        else
-          cp -r "$MOD_ROOT"/* template/src/main/java/ 2>/dev/null || true
-          cp -r "$MOD_ROOT"/* template/src/main/resources/ 2>/dev/null || true
+        # Neu code tai len dang cay thu muc phang (flat) khong co src/main/...
+        if [ -z "$JAVA_SRC" ] && [ -z "$RES_SRC" ]; then
+          echo "Khong tim thay cau truc thu muc tieu chuan, tien hanh quet thong minh..."
+          JSON_LOC=$(find extracted -name "fabric.mod.json" -type f | head -n 1)
+          if [ -n "$JSON_LOC" ]; then
+            ROOT_DIR=$(dirname "$JSON_LOC")
+          else
+            ROOT_DIR="extracted"
+          fi
+          cp -r "$ROOT_DIR"/* template/src/main/java/ 2>/dev/null || true
+          cp -r "$ROOT_DIR"/* template/src/main/resources/ 2>/dev/null || true
           find template/src/main/java/ -type f ! -name "*.java" -delete 2>/dev/null || true
           find template/src/main/resources/ -name "*.java" -delete 2>/dev/null || true
         fi
         
-        # 5. Giai ma bo cong cu sap xep tu dong (Mã hoá an toan tranh loi ky tu va thut le)
-        echo -n "aW1wb3J0IG9zCmltcG9ydCByZQppbXBvcnQgZ2xvYgppbXBvcnQganNvbgppbXBvcnQgc2h1dGlsCgpmb3IgZnBhdGggaW4gZ2xvYi5nbG9iKCd0ZW1wbGF0ZS9zcmMvbWFpbi9yZXNvdXJjZXMvKiovY2hlbXNzLm1peGlucy5qc29uJywgcmVjdXJzaXZlPVRydWUpOgogICAgdHJ5OgogICAgICAgIHdpdGggb3BlbihmcGF0aCwgJ3InKSBhcyBmOiBkYXRhID0ganNvbi5sb2FkKGYpCiAgICAgICAgaWYgJ21peGlucycgaW4gZGF0YSBhbmQgaXNpbnN0YW5jZShkYXRhWydtaXhpbnMnXSwgbGlzdCk6CiAgICAgICAgICAgIGRhdGFbJ21peGlucyddID0gW20gZm9yIG0gaW4gZGF0YVsnbWl4aW5zJ10gaWYgJ0tleWJvYXJkTWl4aW4nIG5vdCBpbiBtXQogICAgICAgIGlmICdjbGllbnQnIGluIGRhdGEgYW5kIGlzaW5zdGFuY2UoZGF0YVsnY2xpZW50J10sIGxpc3QpOgogICAgICAgICAgICBkYXRhWydjbGllbnQnXSA9IFttIGZvciBtIGluIGRhdGFbJ2NsaWVudCddIGlmICdLZXlib2FyZE1peGluJyBub3QgaW4gbV0KICAgICAgICB3aXRoIG9wZW4oZnBhdGgsICd3JykgYXMgZjoganNvbi5kdW1wKGRhdGEsIGYsIGluZGVudD0yKQogICAgICAgIHByaW50KGYiRml4ZWQgbWl4aW46IHtmcGF0aH0iKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIHByaW50KGYiRXJyb3IgbWl4aW4ge2ZwYXRofToge2V9IikKCm9zLm1ha2VkaXJzKCd0ZW1wX2phdmAnLCBleGlzdF9vaz1UcnVlKQpqYXZhX2ZpbGVzID0gZ2xvYi5nbG9iKCd0ZW1wbGF0ZS9zcmMvbWFpbi9qYXZhLyoqLyouamF2YScsIHJlY3Vyc2l2ZT1UcnVlKQoKZm9yIGZwYXRoIGluIGphdmFfZmlsZXM6CiAgICBpZiBvcy5wYXRoLmlzZmlsZShmcGF0aCk6CiAgICAgICAgZmlsZW5hbWUgPSBvcy5wYXRoLmJhc2VuYW1lKGZwYXRoKQogICAgICAgIHdpdGggb3BlbihmcGF0aCwgJ3InLCBlbmNvZGluZz0ndXRmLTgnLCBlcnJvcnM9J2lnbm9yZScpIGFzIGY6CiAgICAgICAgICAgIGNvbnRlbnQgPSBmLnJlYWQoKQogICAgICAgIAogICAgICAgIGlmIGZpbGVuYW1lID09ICdNb2R1bGVNYW5hZ2VyLmphdmEnOgogICAgICAgICAgICBjb250ZW50ID0gIiIicGFja2FnZSBtZS5jaGVtc3MubW9kdWxlczsKCmltcG9ydCBqYXZhLnV0aWwuQXJyYXlMaXN0OwppbXBvcnQgamF2YS51dGlsLkxpc3Q7CmltcG9ydCBtZS5jaGVtc3MubW9kdWxlcy5tb3ZlbWVudC5TcHJpbnQ7CmltcG9ydCBtZS5jaGVtc3MubW9kdWxlcy5jb21iYXQuRG91YmxlQW5jaG9yOwoKcHVibGljIGNsYXNzIE1vZHVsZU1hbmFnZXIgewogICAgcHJpdmF0ZSBmaW5hbCBMaXN0PE1vZHVsZT4gbW9kdWxlcyA9IG5ldyBBcnJheUxpc3Q8PigpOwoKICAgIHB1YmxpYyBNb2R1bGVNYW5hZ2VyKCkgewogICAgICAgIG1vZHVsZXMuYWRkKG5ldyBTcHJpbnQoKSk7ICAgICAgIAogICAgICAgIG1vZHVsZXMuYWRkKG5ldyBEb3VibGVBbmNob3IoKSk7IAogICAgfQoKICAgIHB1YmxpYyBMaXN0PE1vZHVsZT4gZ2V0TW9kdWxlcygpIHsKICAgICAgICByZXR1cm4gbW9kdWxlczsKICAgIH0KCiAgICBwdWJsaWMgTW9kdWxlIGdldE1vZHVsZUJ5TmFtZShTdHJpbmcgbmFtZSkgewogICAgICAgIGZvciAoTW9kdWxlIG0gOiBtb2R1bGVzKSB7CiAgICAgICAgICAgIGlmIChtLmdldE5hbWUoKS5lcXVhbHNJZ25vcmVDYXNlKG5hbWUpKSB7CiAgICAgICAgICAgICAgICByZXR1cm4gbTsKICAgICAgICAgICAgfQogICAgICAgIH0KICAgICAgICByZXR1cm4gbnVsbDsKICAgIH0KfSIiIgogICAgICAgIAogICAgICAgIGNvbnRlbnQgPSByZS5zdWIocideW1BwXWFja2FnZVxzKycsICdwYWNrYWdlICcsIGNvbnRlbnQsIGZsYWdzPXJlLk1VTFRJTElORSkKICAgICAgICBtYXRjaCA9IHJlLnNlYXJjaChyJ3BhY2thZ2VccysoW1x3XC5dKylccyo7JywgY29udGVudCkKICAgICAgICBpZiBtYXRjaDoKICAgICAgICAgICAgcGtnX25hbWUgPSBtYXRjaC5ncm91cCgxKS5zdHJpcCgpCiAgICAgICAgZWxzZToKICAgICAgICAgICAgcGtnX25hbWUgPSAibWUuY2hlbXNzLm1vZHVsZXMiCiAgICAgICAgICAgIGNvbnRlbnQgPSAicGFja2FnZSBtZS5jaGVtc3MubW9kdWxlcztcbiIgKyBjb250ZW50CiAgICAgICAgCiAgICAgICAgcGtnX2RpciA9IG9zLnBhdGguam9pbigndGVtcF9qYXZhJywgcGtnX25hbWUucmVwbGFjZSgnLicsICcvJykpCiAgICAgICAgb3MubWFrZWRpcnMocGtnX2RpciwgZXhpc3Rfb2s9VHJ1ZSkKICAgICAgICAKICAgICAgICBkZXN0X2ZpbGUgPSBvcy5wYXRoLmpvaW4ocGtnX2RpciwgZmlsZW5hbWUpCiAgICAgICAgd2l0aCBvcGVuKGRlc3RfZmlsZSwgJ3cnLCBlbmNvZGluZz0ndXRmLTgnKSBhcyBmOgogICAgICAgICAgICBmLndyaXRlKGNvbnRlbnQpCgppZiBvcy5wYXRoLmV4aXN0cygndGVtcGxhdGUvc3JjL21haW4vamF2YScpOgogICAgc2h1dGlsLnJtdHJlZSgndGVtcGxhdGUvc3JjL21haW4vamF2YScpCm9zLm1ha2VkaXJzKCd0ZW1wbGF0ZS9zcmMvbWFpbi9qYXZhJywgZXhpc3Rfb2s9VHJ1ZSkKCmlmIG9zLnBhdGguZXhpc3RzKCd0ZW1wX2phdmEnKSBhbmQgb3MubGlzdGRpcigndGVtcF9qYXZhJyk6CiAgICBmb3IgaXRlbSBpbiBvcy5saXN0ZGlyKCd0ZW1wX2phdmEnKToKICAgICAgICBzaHV0aWwubW92ZShvcy5wYXRoLmpvaW4oJ3RlbXBfamF2YScsIGl0ZW0pLCAndGVtcGxhdGUvc3JjL21haW4vamF2YS8nKQogICAgcHJpbnQoIlN1Y2Nlc3NmdWxseSBvcmdhbml6ZWQgSmF2YSBzdHJ1Y3R1cmUhIikKZWxzZToKICAgIHByaW50KCJObyBKYXZhIGZpbGVzIGZvdW5kISIpCiAgICAKaWYgb3MucGF0aC5leGlzdHMoJ3RlbXBfamF2YScpOgogICAgc2h1dGlsLnJtdHJlZSgndGVtcF9qYXZhJyk=" | base64 -d > organize.py
+        # 4. Ghi file Python xu ly dong goi va loai bo KeyboardMixin loi (Ghi truc tiep giu nguyen thut le)
+        cat << 'EOF' > organize.py
+import os
+import re
+import glob
+import json
+import shutil
+
+# Tim va loai bo KeyboardMixin ra khoi cac file cau hinh json de tranh crash game
+for fpath in glob.glob('template/src/main/resources/**/*.json', recursive=True):
+    try:
+        with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+            data = json.load(f)
+        modified = False
+        if 'mixins' in data and isinstance(data['mixins'], list):
+            old_len = len(data['mixins'])
+            data['mixins'] = [m for m in data['mixins'] if 'KeyboardMixin' not in m]
+            if len(data['mixins']) != old_len: modified = True
+        if 'client' in data and isinstance(data['client'], list):
+            old_len = len(data['client'])
+            data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]
+            if len(data['client']) != old_len: modified = True
+        if modified:
+            with open(fpath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            print(f"Da xoa sach KeyboardMixin khoi file: {fpath}")
+    except Exception as e:
+        print(f"Bỏ qua lỗi đọc JSON tai {fpath}: {e}")
+
+# Sap xep lai vi tri thu muc Java dua tren tu khoa 'package' thuc te trong code
+temp_dir = 'temp_java_reorganized'
+os.makedirs(temp_dir, exist_ok=True)
+java_files = glob.glob('template/src/main/java/**/*.java', recursive=True)
+
+for fpath in java_files:
+    if os.path.isfile(fpath):
+        filename = os.path.basename(fpath)
+        try:
+            with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+        except Exception:
+            continue
         
-        # Chay cong cu tu dong xep hang file
+        # Ghi de noi dung ModuleManager.java chuan hoa khong import KeyboardMixin
+        if filename == 'ModuleManager.java':
+            content = """package me.chemss.modules;
+
+import java.util.ArrayList;
+import java.util.List;
+import me.chemss.modules.movement.Sprint;
+import me.chemss.modules.combat.DoubleAnchor;
+
+public class ModuleManager {
+    private final List<Module> modules = new ArrayList<>();
+
+    public ModuleManager() {
+        modules.add(new Sprint());       
+        modules.add(new DoubleAnchor()); 
+    }
+
+    public List<Module> getModules() {
+        return modules;
+    }
+
+    public Module getModuleByName(String name) {
+        for (Module m : modules) {
+            if (m.getName().equalsIgnoreCase(name)) {
+                return m;
+            }
+        }
+        return null;
+    }
+}"""
+        
+        content = re.sub(r'^[Pp]ackage\s+', 'package ', content, flags=re.MULTILINE)
+        match = re.search(r'package\s+([\w\.]+)\s*;', content)
+        if match:
+            pkg_name = match.group(1).strip()
+        else:
+            pkg_name = "me.chemss.modules"
+            content = "package me.chemss.modules;\n" + content
+        
+        pkg_dir = os.path.join(temp_dir, pkg_name.replace('.', '/'))
+        os.makedirs(pkg_dir, exist_ok=True)
+        with open(os.path.join(pkg_dir, filename), 'w', encoding='utf-8') as f:
+            f.write(content)
+
+dest_java_dir = 'template/src/main/java'
+if os.path.exists(dest_java_dir):
+    shutil.rmtree(dest_java_dir)
+os.makedirs(dest_java_dir, exist_ok=True)
+
+if os.path.exists(temp_dir) and os.listdir(temp_dir):
+    for item in os.listdir(temp_dir):
+        shutil.move(os.path.join(temp_dir, item), dest_java_dir)
+    print("Xap xep cau truc file Java thanh cong!")
+else:
+    print("Khong tim thay file Java nao de xap xep.")
+
+if os.path.exists(temp_dir):
+    shutil.rmtree(temp_dir)
+EOF
+
+        # 5. Chay cong cu tu dong sap xep hang file
         python3 organize.py
         
         # 6. Chay may dich tu file .java sang file .class chuan Minecraft
