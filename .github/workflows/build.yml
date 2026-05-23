@@ -58,9 +58,10 @@ jobs:
           find template/src/main/resources/ -name "*.java" -delete 2>/dev/null || true
         fi
         
-        # 5. Tu dong xoa dong loi KeyboardMixin gay vao game bi vao vao file cau hinh
+        # 5. Tu dong xoa dong loi KeyboardMixin va tu dong va loi file ModuleManager.java
         python3 -c "
         import json, glob
+        # Sua loi file mixin cấu hình game
         for fpath in glob.glob('template/src/main/resources/**/chemss.mixins.json', recursive=True):
             with open(fpath, 'r') as f: data = json.load(f)
             if 'mixins' in data and isinstance(data['mixins'], list):
@@ -68,7 +69,16 @@ jobs:
             if 'client' in data and isinstance(data['client'], list):
                 data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]
             with open(fpath, 'w') as f: json.dump(data, f, indent=2)
-        print('Da tu dong sua xong loi KeyboardMixin!')
+            
+        # Sua loi viet hoa Package va xoa doan code rác bi lap o ModuleManager.java
+        for fpath in glob.glob('template/src/main/java/**/ModuleManager.java', recursive=True):
+            with open(fpath, 'r') as f: text = f.read()
+            text = text.replace('Package me.chemss', 'package me.chemss')
+            if ')) {' in text:
+                text = text.split(')) {')[0]
+            with open(fpath, 'w') as f: f.write(text)
+            
+        print('Da tu dong va xong tat ca cac loi file!')
         "
         
         # 6. Chay may dich tu file .java sang file .class chuẩn Minecraft
