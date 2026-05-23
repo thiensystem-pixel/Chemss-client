@@ -58,64 +58,16 @@ jobs:
           find template/src/main/resources/ -name "*.java" -delete 2>/dev/null || true
         fi
         
-        # 5. Sửa lỗi hệ thống bằng lệnh Bash chuẩn không sợ lệch dòng
-        python3 -c "
-        import json, glob
-        for fpath in glob.glob('template/src/main/resources/**/chemss.mixins.json', recursive=True):
-            with open(fpath, 'r') as f: data = json.load(f)
-            if 'mixins' in data: data['mixins'] = [m for m in data['mixins'] if 'KeyboardMixin' not in m]
-            if 'client' in data: data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]
-            with open(fpath, 'w') as f: json.dump(data, f, indent=2)
-        "
+        # 5. Sua loi bang cach tao file Python tung buoc de tranh loi dau cach (IndentationError)
+        echo "import json, glob" > repair.py
+        echo "for fpath in glob.glob('template/src/main/resources/**/chemss.mixins.json', recursive=True):" >> repair.py
+        echo "    with open(fpath, 'r') as f: data = json.load(f)" >> repair.py
+        echo "    if 'mixins' in data: data['mixins'] = [m for m in data['mixins'] if 'KeyboardMixin' not in m]" >> repair.py
+        echo "    if 'client' in data: data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]" >> repair.py
+        echo "    with open(fpath, 'w') as f: json.dump(data, f, indent=2)" >> repair.py
+        python3 repair.py
         
-        # Ghi đè trực tiếp file ModuleManager.java sạch 100% bằng cơ chế đổ chữ an toàn
+        # Ghi de file ModuleManager.java bang chuoi Base64 mien nhiem moi loai loi ky tu va dau ngoac
         MM_PATH=$(find template/src/main/java -name "ModuleManager.java" | head -n 1)
         if [ -n "$MM_PATH" ]; then
-          cat << 'EOF' > "$MM_PATH"
-package me.chemss.modules;
-
-import java.util.ArrayList;
-import java.util.List;
-import me.chemss.modules.movement.Sprint;
-import me.chemss.modules.combat.DoubleAnchor;
-
-public class ModuleManager {
-    private final List<Module> modules = new ArrayList<>();
-
-    public ModuleManager() {
-        modules.add(new Sprint());       
-        modules.add(new DoubleAnchor()); 
-    }
-
-    public List<Module> getModules() {
-        return modules;
-    }
-
-    public Module getModuleByName(String name) {
-        for (Module m : modules) {
-            if (m.getName().equalsIgnoreCase(name)) {
-                return m;
-            }
-        }
-        return null;
-    }
-}
-EOF
-          echo "Da va xong file ModuleManager.java!"
-        fi
-        
-        # 6. Chay may dich tu file .java sang file .class chuẩn Minecraft
-        cd template
-        chmod +x gradlew
-        ./gradlew build
-        cd ..
-        
-        # 7. Gom thanh qua file .jar ra ngoai
-        mkdir -p output_jar
-        find template/build/libs/ -type f -name "*.jar" ! -name "*-sources.jar" ! -name "*-dev.jar" ! -name "*-sources-dev.jar" -exec cp {} output_jar/ShibaClient.jar \;
-
-    - name: Upload Result
-      uses: actions/upload-artifact@v4
-      with:
-        name: ShibaClient-Jar
-        path: output_jar/
+          echo "cGFja2FnZSBtZS5jaGVtc3MubW9kdWxlczsKCmltcG9ydCBqYXZhLnV0aWwuQXJyYXlMaXN0OwppbXBvcnQgamF2YS51dGlsLkxpc3Q7CmltcG9ydCBtZS5jaGVtc3MubW9kdWxlcy5tb3ZlbWVudC5TcHJpbnQ7CmltcG9ydCBtZS5jaGVtc3MubW9kdWxlcy5jb21iYXQuRG91YmxlQW5jaG9yOwoKcHVibGljIGNsYXNzIE1vZHVsZU1hbmFnZXIgewogICAgcHJpdmF0ZSBmaW5hbCBMaXN0PE1vZHVsZT4gbW9kdWxlcyA9IG5ldyBBcnJheUxpc3Q8PigpOwoKICAgIHB1YmxpYyBNb2R1bGVNYW5hZ2VyKCkgewogICAgICAgIG1v
