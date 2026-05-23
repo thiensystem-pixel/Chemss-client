@@ -1,4 +1,4 @@
-name: Build Fabric Mod
+name: Build or Pack Mod
 on:
   push:
     branches: [ "main", "master" ]
@@ -16,21 +16,35 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
         
-    - name: Unzip and Prepare Code
+    - name: Process Code
       run: |
         mkdir extracted
         unzip -q "*.zip" -d extracted
+        
         BUILD_PATH=$(find extracted -name "build.gradle" | head -n 1)
-        BUILD_DIR=$(dirname "$BUILD_PATH")
-        cp -r "$BUILD_DIR"/* .
-        rm -rf extracted
-        chmod +x gradlew
-
-    - name: Build Mod
-      run: ./gradlew build
+        mkdir -p output_jar
+        
+        if [ -n "$BUILD_PATH" ]; then
+          echo "Phat hien ma nguon Gradle. Bat dau bien dich..."
+          BUILD_DIR=$(dirname "$BUILD_PATH")
+          cp -r "$BUILD_DIR"/* .
+          chmod +x gradlew
+          ./gradlew build
+          cp build/libs/*.jar output_jar/
+        else
+          echo "Khong co build.gradle. Day la mod da lam san, tien hanh dong goi..."
+          cd extracted
+          FIRST_ITEM=$(ls -A)
+          ITEM_COUNT=$(echo "$FIRST_ITEM" | wc -l)
+          if [ "$ITEM_COUNT" -eq 1 ] && [ -d "$FIRST_ITEM" ]; then
+            cd "$FIRST_ITEM"
+          fi
+          zip -r ../../output_jar/ShibaClient.jar ./*
+          cd ../..
+        fi
 
     - name: Upload Result
       uses: actions/upload-artifact@v4
       with:
         name: ShibaClient-Jar
-        path: build/libs/
+        path: output_jar/
