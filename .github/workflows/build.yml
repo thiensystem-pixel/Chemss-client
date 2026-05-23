@@ -45,7 +45,7 @@ jobs:
           MOD_ROOT="extracted"
         fi
         
-        # 4. Dua code vao dung vi tri de tien hanh dich sang .class
+        # 4. Dua code vao vi tri tam thoi de xu ly
         HAS_SRC_DIR=$(find "$MOD_ROOT" -path "*/src/main/java" -type d | head -n 1)
         if [ -n "$HAS_SRC_DIR" ]; then
           SRC_BASE=$(echo "$HAS_SRC_DIR" | sed 's|/src/main/java||')
@@ -58,16 +58,122 @@ jobs:
           find template/src/main/resources/ -name "*.java" -delete 2>/dev/null || true
         fi
         
-        # 5. Sua loi bang cach tao file Python tung buoc de tranh loi dau cach (IndentationError)
-        echo "import json, glob" > repair.py
-        echo "for fpath in glob.glob('template/src/main/resources/**/chemss.mixins.json', recursive=True):" >> repair.py
-        echo "    with open(fpath, 'r') as f: data = json.load(f)" >> repair.py
-        echo "    if 'mixins' in data: data['mixins'] = [m for m in data['mixins'] if 'KeyboardMixin' not in m]" >> repair.py
-        echo "    if 'client' in data: data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]" >> repair.py
-        echo "    with open(fpath, 'w') as f: json.dump(data, f, indent=2)" >> repair.py
-        python3 repair.py
+        # 5. Khởi chạy Trình dọn dẹp và Tự động sắp xếp lại cấu trúc thư mục Java chuẩn 100%
+        cat << 'EOF' > organize.py
+        import os
+        import re
+        import glob
+        import json
+        import shutil
+
+        # --- 5.1 Sửa lỗi file mixin cấu hình game ---
+        for fpath in glob.glob('template/src/main/resources/**/chemss.mixins.json', recursive=True):
+            try:
+                with open(fpath, 'r') as f: data = json.load(f)
+                if 'mixins' in data and isinstance(data['mixins'], list):
+                    data['mixins'] = [m for m in data['mixins'] if 'KeyboardMixin' not in m]
+                if 'client' in data and isinstance(data['client'], list):
+                    data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]
+                with open(fpath, 'w') as f: json.dump(data, f, indent=2)
+                print(f"Da va xong mixin: {fpath}")
+            except Exception as e:
+                print(f"Loi mixin {fpath}: {e}")
+
+        # --- 5.2 Quét và tự động đưa các file Java về đúng thư mục package ---
+        os.makedirs('temp_java', exist_ok=True)
+        java_files = glob.glob('template/src/main/java/**/*.java', recursive=True)
+
+        for fpath in java_files:
+            if os.path.isfile(fpath):
+                filename = os.path.basename(fpath)
+                
+                # Đọc nội dung file
+                with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                
+                # Nếu phát hiện file ModuleManager.java, lập tức thay thế bằng bản code sạch hoàn hảo nhất
+                if filename == 'ModuleManager.java':
+                    content = """package me.chemss.modules;
+
+import java.util.ArrayList;
+import java.util.List;
+import me.chemss.modules.movement.Sprint;
+import me.chemss.modules.combat.DoubleAnchor;
+
+public class ModuleManager {
+    private final List<Module> modules = new ArrayList<>();
+
+    public ModuleManager() {
+        modules.add(new Sprint());       
+        modules.add(new DoubleAnchor()); 
+    }
+
+    public List<Module> getModules() {
+        return modules;
+    }
+
+    public Module getModuleByName(String name) {
+        for (Module m : modules) {
+            if (m.getName().equalsIgnoreCase(name)) {
+                return m;
+            }
+        }
+        return null;
+    }
+}"""
+                
+                # Sửa lỗi viết hoa sai chính tả chữ 'Package' thành 'package'
+                content = re.sub(r'^[Pp]ackage\s+', 'package ', content, flags=re.MULTILINE)
+                
+                # Đọc dòng khai báo package bên trong file để tìm vị trí đặt thư mục đúng
+                match = re.search(r'package\s+([\w\.]+)\s*;', content)
+                if match:
+                    pkg_name = match.group(1).strip()
+                else:
+                    pkg_name = "me.chemss.modules"
+                    content = "package me.chemss.modules;\n" + content
+                
+                # Tạo đường dẫn thư mục chuẩn dựa trên tên package
+                pkg_dir = os.path.join('temp_java', pkg_name.replace('.', '/'))
+                os.makedirs(pkg_dir, exist_ok=True)
+                
+                # Di chuyển file vào thư mục cấu trúc mới sạch sẽ
+                dest_file = os.path.join(pkg_dir, filename)
+                with open(dest_file, 'w', encoding='utf-8') as f:
+                    f.write(content)
+
+        # Xóa bỏ thư mục java cũ bị lộn xộn cấu trúc đi
+        if os.path.exists('template/src/main/java'):
+            shutil.rmtree('template/src/main/java')
+        os.makedirs('template/src/main/java', exist_ok=True)
+
+        # Đưa toàn bộ cấu thư mục chuẩn đã sắp xếp vào hệ thống chính thức
+        if os.path.exists('temp_java') and os.listdir('temp_java'):
+            for item in os.listdir('temp_java'):
+                shutil.move(os.path.join('temp_java', item), 'template/src/main/java/')
+            print("Chúc mừng! Đã sắp xếp lại toàn bộ cấu trúc file Java khớp với Package thành công!")
+        else:
+            print("Không tìm thấy file Java nào!")
+            
+        if os.path.exists('temp_java'):
+            shutil.rmtree('temp_java')
+        EOF
         
-        # Ghi de file ModuleManager.java bang chuoi Base64 mien nhiem moi loai loi ky tu va dau ngoac
-        MM_PATH=$(find template/src/main/java -name "ModuleManager.java" | head -n 1)
-        if [ -n "$MM_PATH" ]; then
-          echo "cGFja2FnZSBtZS5jaGVtc3MubW9kdWxlczsKCmltcG9ydCBqYXZhLnV0aWwuQXJyYXlMaXN0OwppbXBvcnQgamF2YS51dGlsLkxpc3Q7CmltcG9ydCBtZS5jaGVtc3MubW9kdWxlcy5tb3ZlbWVudC5TcHJpbnQ7CmltcG9ydCBtZS5jaGVtc3MubW9kdWxlcy5jb21iYXQuRG91YmxlQW5jaG9yOwoKcHVibGljIGNsYXNzIE1vZHVsZU1hbmFnZXIgewogICAgcHJpdmF0ZSBmaW5hbCBMaXN0PE1vZHVsZT4gbW9kdWxlcyA9IG5ldyBBcnJheUxpc3Q8PigpOwoKICAgIHB1YmxpYyBNb2R1bGVNYW5hZ2VyKCkgewogICAgICAgIG1v
+        # Chạy công cụ tự động xếp hàng file
+        python3 organize.py
+        
+        # 6. Chay may dich tu file .java sang file .class chuẩn Minecraft
+        cd template
+        chmod +x gradlew
+        ./gradlew build
+        cd ..
+        
+        # 7. Gom thanh qua file .jar ra ngoai
+        mkdir -p output_jar
+        find template/build/libs/ -type f -name "*.jar" ! -name "*-sources.jar" ! -name "*-dev.jar" ! -name "*-sources-dev.jar" -exec cp {} output_jar/ShibaClient.jar \;
+
+    - name: Upload Result
+      uses: actions/upload-artifact@v4
+      with:
+        name: ShibaClient-Jar
+        path: output_jar/
