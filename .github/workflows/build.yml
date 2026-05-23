@@ -1,0 +1,36 @@
+name: Build Fabric Mod
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        
+    - name: Unzip and Prepare Code
+      run: |
+        mkdir extracted
+        unzip -q "*.zip" -d extracted
+        BUILD_PATH=$(find extracted -name "build.gradle" | head -n 1)
+        BUILD_DIR=$(dirname "$BUILD_PATH")
+        cp -r "$BUILD_DIR"/* .
+        rm -rf extracted
+        chmod +x gradlew
+
+    - name: Build Mod
+      run: ./gradlew build
+
+    - name: Upload Result
+      uses: actions/upload-artifact@v4
+      with:
+        name: ShibaClient-Jar
+        path: build/libs/
