@@ -21,17 +21,13 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
-    - name: Process and Compile Code
+    - name: Clone Template and Extract Source
       run: |
-        # 1. Dọn dẹp triệt để và tải khung dịch Fabric 1.21.1 chuẩn
         rm -rf template extracted output_jar
         git clone --depth 1 --branch 1.21.1 https://github.com/FabricMC/fabric-example-mod.git template
-
-        # 2. Tạo cấu trúc thư mục tạm
         mkdir -p extracted
         mkdir -p output_jar
 
-        # Giải nén nếu là file zip, hoặc copy trực tiếp nếu là thư mục thường
         if ls *.zip 1>/dev/null 2>&1; then
           unzip -q "*.zip" -d extracted
         else
@@ -43,80 +39,107 @@ jobs:
           done
         fi
 
-        # 3. Quét tự động và đưa code vào vị trí chính xác
-        JAVA_SRC=$(find extracted -path "*/src/main/java" -type d | head -n 1)
-        RES_SRC=$(find extracted -path "*/src/main/resources" -type d | head -n 1)
-        
-        if [ -n "$JAVA_SRC" ]; then
-          echo "Tim thay thu muc Java tai: $JAVA_SRC"
-          cp -r "$JAVA_SRC"/* template/src/main/java/ 2>/dev/null || true
-        fi
-        if [ -n "$RES_SRC" ]; then
-          echo "Tim thay thu muc Resources tai: $RES_SRC"
-          cp -r "$RES_SRC"/* template/src/main/resources/ 2>/dev/null || true
-        fi
-        
-        if [ -z "$JAVA_SRC" ] && [ -z "$RES_SRC" ]; then
-          echo "Khong tim thay cau truc chuan, tien hanh quet toan bo..."
-          JSON_LOC=$(find extracted -name "fabric.mod.json" -type f | head -n 1)
-          if [ -n "$JSON_LOC" ]; then
-            ROOT_DIR=$(dirname "$JSON_LOC")
-          else
-            ROOT_DIR="extracted"
-          fi
-          cp -r "$ROOT_DIR"/* template/src/main/java/ 2>/dev/null || true
-          cp -r "$ROOT_DIR"/* template/src/main/resources/ 2>/dev/null || true
-          find template/src/main/java/ -type f ! -name "*.java" -delete 2>/dev/null || true
-          find template/src/main/resources/ -name "*.java" -delete 2>/dev/null || true
-        fi
+    - name: Optimize Code and Remove KeyboardMixin
+      shell: python
+      run: |
+        import os
+        import glob
+        import json
+        import shutil
+        import re
 
-        # 4. Ghi file Python xử lý cấu trúc gói và xóa triệt để KeyboardMixin
-        cat << 'EOF' > organize.py
-import os
-import glob
-import json
-import shutil
-import re
+        print("--- Dang xu ly cac file Mixin JSON ---")
+        mixin_files = glob.glob('template/src/main/resources/**/*mixin*.json', recursive=True)
+        for fpath in mixin_files:
+            try:
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                modified = False
+                if 'mixins' in data and isinstance(data['mixins'], list):
+                    old_len = len(data['mixins'])
+                    data['mixins'] = [m for m in data['mixins'] if 'KeyboardMixin' not in m]
+                    if len(data['mixins']) != old_len: modified = True
+                if 'client' in data and isinstance(data['client'], list):
+                    old_len = len(data['client'])
+                    data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]
+                    if len(data['client']) != old_len: modified = True
+                if modified:
+                    with open(fpath, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, indent=2)
+                    print(f"Da loai bo KeyboardMixin khoi: {fpath}")
+            except Exception as e:
+                print(f"Loi khi doc mixin {fpath}: {e}")
 
-print("--- Dang xu ly cac file Mixin JSON ---")
-mixin_files = glob.glob('template/src/main/resources/**/*mixin*.json', recursive=True)
-for fpath in mixin_files:
-    try:
-        with open(fpath, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        modified = False
-        if 'mixins' in data and isinstance(data['mixins'], list):
-            old_len = len(data['mixins'])
-            data['mixins'] = [m for m in data['mixins'] if 'KeyboardMixin' not in m]
-            if len(data['mixins']) != old_len: modified = True
-        if 'client' in data and isinstance(data['client'], list):
-            old_len = len(data['client'])
-            data['client'] = [m for m in data['client'] if 'KeyboardMixin' not in m]
-            if len(data['client']) != old_len: modified = True
-        if modified:
-            with open(fpath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2)
-            print(f"Da loai bo KeyboardMixin khoi: {fpath}")
-    except Exception as e:
-        print(f"Bo qua hoac loi khi doc mixin {fpath}: {e}")
+        print("--- Dua code vao dung vi tri khung Fabric ---")
+        java_src = None
+        res_src = None
+        for root, dirs, files in os.walk('extracted'):
+            if root.endswith(os.path.join('src', 'main', 'java')):
+                java_src = root
+            if root.endswith(os.path.join('src', 'main', 'resources')):
+                res_src = root
 
-print("--- Chuan hoa cau truc Package Java ---")
-temp_dir = 'temp_java_reorganize'
-os.makedirs(temp_dir, exist_ok=True)
+        if java_src:
+            for item in os.listdir(java_src):
+                s = os.path.join(java_src, item)
+                d = os.path.join('template/src/main/java', item)
+                if os.path.isdir(s):
+                    if os.path.exists(d): shutil.rmtree(d)
+                    shutil.copytree(s, d)
+                else:
+                    shutil.copy2(s, d)
+        if res_src:
+            for item in os.listdir(res_src):
+                s = os.path.join(res_src, item)
+                d = os.path.join('template/src/main/resources', item)
+                if os.path.isdir(s):
+                    if os.path.exists(d): shutil.rmtree(d)
+                    shutil.copytree(s, d)
+                else:
+                    shutil.copy2(s, d)
 
-java_files = glob.glob('template/src/main/java/**/*.java', recursive=True)
-for fpath in java_files:
-    if os.path.isfile(fpath):
-        filename = os.path.basename(fpath)
-        try:
-            with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-        except Exception:
-            continue
+        if not java_src and not res_src:
+            root_dir = 'extracted'
+            for root, dirs, files in os.walk('extracted'):
+                if 'fabric.mod.json' in files:
+                    root_dir = root
+                    break
+            for item in os.listdir(root_dir):
+                s = os.path.join(root_dir, item)
+                if os.path.isdir(s):
+                    shutil.copytree(s, os.path.join('template/src/main/java', item), dirs_exist_ok=True)
+                    shutil.copytree(s, os.path.join('template/src/main/resources', item), dirs_exist_ok=True)
+                else:
+                    shutil.copy2(s, os.path.join('template/src/main/java', item))
+                    shutil.copy2(s, os.path.join('template/src/main/resources', item))
+            
+            for root, dirs, files in os.walk('template/src/main/java'):
+                for file in files:
+                    if not file.endswith('.java'):
+                        try: os.remove(os.path.join(root, file))
+                        except: pass
+            for root, dirs, files in os.walk('template/src/main/resources'):
+                for file in files:
+                    if file.endswith('.java'):
+                        try: os.remove(os.path.join(root, file))
+                        except: pass
 
-        # Ghi de noi dung ModuleManager.java de xoa KeyboardMixin
-        if filename == 'ModuleManager.java':
-            content = """package me.chemss.modules;
+        print("--- Chuan hoa Package Java & Va loi ModuleManager ---")
+        temp_dir = 'temp_java_reorganize'
+        os.makedirs(temp_dir, exist_ok=True)
+
+        java_files = glob.glob('template/src/main/java/**/*.java', recursive=True)
+        for fpath in java_files:
+            if os.path.isfile(fpath):
+                filename = os.path.basename(fpath)
+                try:
+                    with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                except Exception:
+                    continue
+
+                if filename == 'ModuleManager.java':
+                    content = """package me.chemss.modules;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -145,45 +168,42 @@ public class ModuleManager {
     }
 }"""
 
-        # Tu dong trich xuat package dung trong code
-        match = re.search(r'package\s+([\w\.]+)\s*;', content)
-        if match:
-            pkg_name = match.group(1).strip()
-        else:
-            pkg_name = "me.chemss"
-            content = "package me.chemss;\n" + content
+                match = re.search(r'package\s+([\w\.]+)\s*;', content)
+                if match:
+                    pkg_name = match.group(1).strip()
+                else:
+                    pkg_name = "me.chemss.modules"
+                    content = "package me.chemss.modules;\n" + content
 
-        pkg_dir = os.path.join(temp_dir, pkg_name.replace('.', '/'))
-        os.makedirs(pkg_dir, exist_ok=True)
-        with open(os.path.join(pkg_dir, filename), 'w', encoding='utf-8') as f:
-            f.write(content)
+                pkg_dir = os.path.join(temp_dir, pkg_name.replace('.', '/'))
+                os.makedirs(pkg_dir, exist_ok=True)
+                with open(os.path.join(pkg_dir, filename), 'w', encoding='utf-8') as f:
+                    f.write(content)
 
-dest_java_dir = 'template/src/main/java'
-if os.path.exists(dest_java_dir):
-    shutil.rmtree(dest_java_dir)
-os.makedirs(dest_java_dir, exist_ok=True)
+        dest_java_dir = 'template/src/main/java'
+        if os.path.exists(dest_java_dir):
+            shutil.rmtree(dest_java_dir)
+        os.makedirs(dest_java_dir, exist_ok=True)
 
-if os.listdir(temp_dir):
-    for item in os.listdir(temp_dir):
-        shutil.move(os.path.join(temp_dir, item), dest_java_dir)
-    print("Sap xep file Java vao package hop le thanh cong!")
-else:
-    print("Khong tim thay file Java nao de xap xep.")
+        if os.path.exists(temp_dir) and os.listdir(temp_dir):
+            for item in os.listdir(temp_dir):
+                s = os.path.join(temp_dir, item)
+                d = os.path.join(dest_java_dir, item)
+                if os.path.isdir(s):
+                    shutil.copytree(s, d, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(s, d)
+            print("Sap xep package va sua loi code thanh cong!")
 
-if os.path.exists(temp_dir):
-    shutil.rmtree(temp_dir)
-EOF
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
-        # 5. Chạy script tối ưu cấu trúc
-        python3 organize.py
-
-        # 6. Tiến hành compile code
+    - name: Compile Mod with Gradle
+      run: |
         cd template
         chmod +x gradlew
         ./gradlew build
         cd ..
-
-        # 7. Gom tất cả các file .jar đầu ra vào mục sản phẩm
         cp template/build/libs/*.jar output_jar/ 2>/dev/null || true
 
     - name: Upload Mod Jar Artifact
